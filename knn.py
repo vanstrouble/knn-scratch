@@ -24,6 +24,28 @@ class KNN():
     def get_predictions(self, X_test):
         return [self.predict(x) for x in X_test]
 
+    def _get_distances(self, x, i, j):
+        return [np.linalg.norm(np.array(x) - np.array(x_train)) for x_train in self.X_train[i:j]]
+
+    def _predict(self, x, indices):
+        distances = self._get_distances(x, indices[0], indices[1])
+        k_indices = np.argsort(distances)[:self.k]
+        k_labels = [self.y_train[index] for index in k_indices]
+        return Counter(k_labels).most_common()[0][0]
+
+    def mp_get_predictions(self, X_test, cpu=cpu_count()):
+        with Pool(cpu) as p:
+            indices = [(i * len(self.X_train) // cpu, (i + 1) * len(self.X_train) // cpu) for i in range(cpu)]
+            pool_processes = [p.apply_async(self._predict, args=(x, i)) for x in X_test for i in indices]
+            predictions = []
+            for i, p_process in enumerate(pool_processes):
+                if i % len(indices) == 0:
+                    k_labels = []
+                k_labels.append(p_process.get())
+                if i % len(indices) == len(indices) - 1:
+                    results = Counter(k_labels).most_common()[0][0]
+                    predictions.append(results)
+        return predictions
 
 def evaluate(predictions, y_test):
     accuracy = np.sum(predictions == y_test) / len(y_test)
@@ -56,9 +78,9 @@ if __name__ == '__main__':
     print(f'Accuracy: {evaluate(normal_pred, y_test)}, time: {end - start}')
     
     # Multiprocessing KNN
-    # start = time.time()
-    # mp_cls = KNN(X_train, y_train, k=5)
-    # mp_pred = mp_cls.mp_get_predictions(X_test)
-    # end = time.time()
-    # print('\nMultiprocessing KNN')
-    # print(f'Accuracy: {evaluate(mp_pred, y_test)}, time: {end - start}')
+    start = time.time()
+    mp_cls = KNN(X_train, y_train, k=3)
+    mp_pred = mp_cls.mp_get_predictions(X_test, cpu=2)
+    end = time.time()
+    print('\nMultiprocessing KNN')
+    print(f'Accuracy: {evaluate(mp_pred, y_test)}, time: {end - start}')
